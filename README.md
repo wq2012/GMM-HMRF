@@ -1,5 +1,9 @@
 # GMM-HMRF Image Segmentation Library
 
+[![View GMM-HMRF on File Exchange](https://www.mathworks.com/matlabcentral/images/matlab-file-exchange.svg)](https://www.mathworks.com/matlabcentral/fileexchange/39553-gmm-hmrf)
+[![arxiv](https://img.shields.io/badge/PDF-arXiv-yellow.svg)](https://arxiv.org/pdf/1212.4527.pdf)
+[![Octave application](https://github.com/wq2012/GMM-HMRF/actions/workflows/octave.yml/badge.svg)](https://github.com/wq2012/GMM-HMRF/actions/workflows/octave.yml)
+
 GMM-Based Hidden Markov Random Field (GMM-HMRF) for Color Image and 3D Volume Segmentation.
 
 This library provides an implementation of the GMM-HMRF framework for segmenting color images and 3D volumes. It uses Gaussian Mixture Models (GMM) for modeling the intensity distributions and Hidden Markov Random Fields (HMRF) for spatial regularization.
