@@ -1,0 +1,33 @@
+# This workflow will install Octave and run unit tests and the demos
+
+name: Octave application
+
+on:
+  push:
+    branches: [ master ]
+  pull_request:
+    branches: [ master ]
+
+jobs:
+  build:
+
+    runs-on: ubuntu-latest
+
+    steps:
+    - uses: actions/checkout@v3
+    - name: Install dependencies
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y octave octave-dev octave-image octave-statistics
+    - name: Run color-image unit tests
+      working-directory: code/color-image
+      run: |
+         octave --no-gui test_color_image.m
+         # Run demo (headless)
+         octave --no-gui demo.m
+    - name: Run 3D unit tests
+      working-directory: code/three-dimensional
+      run: |
+         octave --no-gui test_3d.m
+         # Run demo (headless)
+         octave --no-gui demo.m

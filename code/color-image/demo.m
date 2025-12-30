@@ -9,6 +9,15 @@ clear;clc;close all;
 mex BoundMirrorExpand.cpp;
 mex BoundMirrorShrink.cpp;
 
+if is_octave()
+    try
+        pkg load image;
+        pkg load statistics;
+    catch
+        warning('Packages not found.');
+    end
+end
+
 I=imread('385028.jpg');
 Y=double(I);
 Y(:,:,1)=gaussianBlur(Y(:,:,1),3);

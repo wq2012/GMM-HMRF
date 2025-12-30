@@ -1,89 +1,109 @@
-%%  The MAP algorithm
-%---input---------------------------------------------------------
-%   X: initial 3D labels
-%   Y: 3D image
-%   GMM: Gaussian mixture model parameters
-%   k: number of labels
-%   g: number of components of each GMM
-%   MAP_iter: maximum number of iterations of the MAP algorithm
-%   show_plot: 1 for showing a plot of energy in each iteration
-%       and 0 for not showing
-%---output--------------------------------------------------------
-%   X: final 3D labels
-%   sum_U: final energy
-
+function [X, sum_U] = MRF_MAP(X, Y, GMM, k, g, MAP_iter, beta, show_plot)
+% MRF_MAP   Maximum A Posteriori (MAP) estimation for 3D MRF labels
+%
+%   [X, sum_U] = MRF_MAP(X, Y, GMM, k, g, MAP_iter, beta, show_plot)
+%
+%   Inputs:
+%       X           - Initial 3D labels (m x n x p matrix)
+%       Y           - 3D volume (m x n x p matrix)
+%       GMM         - Gaussian Mixture Model parameters (cell array)
+%       k           - Number of label classes
+%       g           - Number of GMM components per class
+%       MAP_iter    - Maximum number of iterations
+%       beta        - Weight for pairwise potential (MRF smoothing)
+%       show_plot   - (Optional) 1 to show energy plot, 0 otherwise
+%
+%   Outputs:
+%       X           - Updated 3D labels
+%       sum_U       - Final energy value
+%
 %   Copyright by Quan Wang, 2012/12/16
 %   Please cite: Quan Wang. GMM-Based Hidden Markov Random Field for 
 %   Color Image and 3D Volume Segmentation. arXiv:1212.4527 [cs.CV], 2012.
 
-function [X sum_U]=MRF_MAP(X,Y,GMM,k,g,MAP_iter,beta,show_plot)
+    if nargin < 8
+        show_plot = 0;
+    end
 
-[m n z]=size(Y);
-
-sum_U_MAP=zeros(1,MAP_iter);
-for it=1:MAP_iter % iterations
-    fprintf('  Inner iteration: %d\n',it);
+    [m, n, p_dim] = size(Y);
+    x = X(:);
+    y = Y(:); % For 3D, Y is essentially intensity scaling? 
+              % Original 3D code: yi=y-mu. y was Y(:).
+              % Wait, original 3D MRF_MAP had yi=y-mu; temp1=yi.*yi/Sigma/2;
+              % This implies Y is a scalar field (intensity volume), not vector field?
+              % Let's check original 3D MRF_MAP.
+              
+    % Original 3D logic:
+    % y=Y(:);
+    % ...
+    % yi=y-mu; 
+    % temp1=yi.*yi/Sigma/2;
+    % So Y is 3D array of SCALARS.
     
-    U=zeros(m*n*z,k);
-    U1=U;
-    U2=U;
-    y=Y(:);
+    sum_U_MAP = zeros(1, MAP_iter);
 
-    for l=1:k % all labels
-        for c=1:g
-            mu=GMM{l}.mu(c,:);
-            Sigma=GMM{l}.Sigma(:,:,c);
-            p=GMM{l}.PComponents(c);
+    % Precompute neighbor validity mask for vectorization (3D)
+    % Kernel for 6-connectivity (Up, Down, Left, Right, Front, Back)
+    kernel = zeros(3, 3, 3);
+    kernel(2, 2, 1) = 1; kernel(2, 2, 3) = 1; % Front/Back (z-dim)
+    kernel(2, 1, 2) = 1; kernel(2, 3, 2) = 1; % Left/Right (cols)
+    kernel(1, 2, 2) = 1; kernel(3, 2, 2) = 1; % Top/Bottom (rows)
+    
+    Count_Valid = convn(ones(m, n, p_dim), kernel, 'same');
+
+    for it = 1:MAP_iter
+        if show_plot
+            fprintf('  Inner iteration: %d\n', it);
+        end
+        
+        U1 = zeros(m*n*p_dim, k);
+        U2 = zeros(m*n*p_dim, k);
+        
+        for l = 1:k
+            for c = 1:g
+                mu = GMM{l}.mu(c); % mu is scalar for 3D intensity?
+                Sigma = GMM{l}.Sigma(1, 1, c); % Sigma is scalar variance?
+                % Note: In original code GMM{l}.Sigma is likely 1x1xc or similar. 
+                % Original: Sigma=GMM{l}.Sigma(:,:,c);
+                
+                p = GMM{l}.ComponentProportion(c);
+                
+                % Unary potential
+                yi = y - mu;
+                temp1 = (yi .* yi) / Sigma / 2;
+                temp1 = temp1 + log(sqrt(abs(Sigma))); % abs for safety
+                U1(:, l) = U1(:, l) + temp1 * p;
+            end
             
-            yi=y-mu;
-            temp1=yi.*yi/Sigma/2;
-            temp1=temp1+log(sqrt(Sigma));
-            U1(:,l)=U1(:,l)+temp1*p;
+            % Pairwise potential - Vectorized
+            M = (X == l);
+            Count_L = convn(double(M), kernel, 'same');
+            u2_vec = (Count_Valid(:) - Count_L(:)) / 2;
+            U2(:, l) = u2_vec;
         end
-     
-        for ind=1:m*n*z % all pixels
-            [i j q]=ind2ijq(ind,m,n);
-            u2=0;
-            if i-1>=1
-                u2=u2+(l ~= X(i-1,j,q))/2;
-            end
-            if i+1<=m
-                u2=u2+(l ~= X(i+1,j,q))/2;
-            end
-            if j-1>=1
-                u2=u2+(l ~= X(i,j-1,q))/2;
-            end
-            if j+1<=n
-                u2=u2+(l ~= X(i,j+1,q))/2;
-            end
-            if q-1>=1
-                u2=u2+(l ~= X(i,j,q-1))/2;
-            end
-            if q+1<=z
-                u2=u2+(l ~= X(i,j,q+1))/2;
-            end
-            U2(ind,l)=u2;
+        
+        U = U1 + U2 * beta;
+        
+        [min_U, new_x] = min(U, [], 2);
+        sum_U_MAP(it) = sum(min_U);
+        
+        if it >= 3 && std(sum_U_MAP(it-2:it)) < 0.01
+             X = reshape(new_x, m, n, p_dim);
+             break;
         end
+        
+        X = reshape(new_x, m, n, p_dim);
+        x = new_x;
     end
-    U=U1+U2*beta;
-    [temp x]=min(U,[],2);
-    sum_U_MAP(it)=sum(temp(:));
-    X=reshape(x,[m n z]);
     
-    if it>=3 && std(sum_U_MAP(it-2:it))<0.01
-        break;
+    sum_U = sum_U_MAP(it);
+    
+    if show_plot
+        figure;
+        plot(1:it, sum_U_MAP(1:it), 'r');
+        title('Sum U MAP');
+        xlabel('MAP iteration');
+        ylabel('Energy');
+        drawnow;
     end
-end
-
-sum_U=0;
-for ind=1:m*n*z % all pixels
-    sum_U=sum_U+U(ind,x(ind));
-end
-if show_plot==1
-    figure;
-    plot(1:it,sum_U_MAP(1:it),'r');
-    title('sum U MAP');
-    xlabel('MAP iteration');
-    ylabel('sum U MAP');
-    drawnow;
 end

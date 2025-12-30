@@ -6,6 +6,14 @@
 
 clear;clc;close all;
 
+if is_octave()
+    try
+        pkg load statistics;
+    catch
+        warning('Statistics package not found.');
+    end
+end
+
 fid=fopen('Image.raw');
 I=fread(fid,50*50*50,'uint8');
 fclose(fid);
